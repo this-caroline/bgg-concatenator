@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BGG concatenator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        .input-section input,
+        .input-section button {
+            margin-right: 10px;
+        }
+        .game-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .game-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            width: 220px;
+            text-align: center;
+            background-color: #f9f9f9;
+        }
+        .game-item a {
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+        .game-item a:hover {
+            color: #007BFF;
+        }
+        .game-header {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .game-info {
+            margin-bottom: 10px;
+        }
+        .game-rating {
+            font-size: 1em;
+            font-weight: normal;
+        }
+        .game-players {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Game List</h1>
+    <div class="input-section">
+        <input type="text" id="player-input" placeholder="Enter player names (comma separated)" style="width: 300px;" value="ex_emo,Meridge,hastalapasta,sophiestudios">
+        <input type="number" id="min-players" placeholder="Min players" style="width: 100px;" value="1">
+        <input type="number" id="max-players" placeholder="Max players" style="width: 100px;" value="10">
+        <button id="fetch-button">Fetch Games</button>
+    </div>
+    <div class="game-list" id="game-list"></div>
+
+    <script>
+        const formatGameName = (name) => {
+            return name.toLowerCase().replace(/\s+/g, '-');
+        };
+
+        const fetchCollection = async (playerList, minPlayers, maxPlayers) => {
+            const gameListPromises = playerList.map(async player => {
+                try {
+                    const url = `https://bgg-json.azurewebsites.net/collection/${player.trim()}`;
+                    const response = await fetch(url);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    const ownedGameNames = data.filter(game => game.owned === true).map(game => ({
+                        name: game.name,
+                        minimumPlayer: game.minPlayers,
+                        maximumPlayer: game.maxPlayers,
+                        gameRating: game.averageRating,
+                        playingTime: game.playingTime,
+                        gameId: game.gameId
+                    }));
+
+                    return ownedGameNames.filter(game =>
+                        (minPlayers === '' || game.minimumPlayer >= minPlayers) &&
+                        (maxPlayers === '' || game.maximumPlayer <= maxPlayers)
+                    );
+                } catch (error) {
+                    console.error('Error fetching the collection:', error);
+                }
+            });
+
+            const gameList = (await Promise.all(gameListPromises)).flat();
+            gameList.sort((a, b) => b.gameRating - a.gameRating);
+
+            const gameListContainer = document.getElementById('game-list');
+            gameListContainer.innerHTML = ''; 
+
+            gameList.forEach(game => {
+                const gameItem = document.createElement('div');
+                gameItem.classList.add('game-item');
+
+                const gameHeader = document.createElement('div');
+                gameHeader.classList.add('game-header');
+                gameHeader.textContent = game.name;
+
+                const gameInfo = document.createElement('div');
+                gameInfo.classList.add('game-info');
+
+                const gameRating = document.createElement('div');
+                gameRating.classList.add('game-rating');
+                gameRating.textContent = `Rating: ${game.gameRating}`;
+
+                const gamePlayers = document.createElement('div');
+                gamePlayers.classList.add('game-players');
+                gamePlayers.textContent = `Players: ${game.minimumPlayer} - ${game.maximumPlayer}`;
+
+                gameInfo.appendChild(gameRating);
+                gameInfo.appendChild(gamePlayers);
+
+                const gameLink = document.createElement('a');
+                gameLink.href = `https://boardgamegeek.com/boardgame/${game.gameId}/${formatGameName(game.name)}`;
+                gameLink.target = '_blank';
+                gameLink.textContent = 'View on BGG';
+
+                gameItem.appendChild(gameHeader);
+                gameItem.appendChild(gameInfo);
+                gameItem.appendChild(gameLink);
+                gameListContainer.appendChild(gameItem);
+            });
+        };
+
+        document.getElementById('fetch-button').addEventListener('click', () => {
+            const playerInput = document.getElementById('player-input').value;
+            const playerList = playerInput.split(',').map(player => player.trim()).filter(player => player.length > 0);
+            const minPlayers = document.getElementById('min-players').value || 1; // Default to 1 if empty
+            const maxPlayers = document.getElementById('max-players').value || 10; // Default to 10 if empty
+
+            if (playerList.length > 0) {
+                fetchCollection(playerList, minPlayers, maxPlayers);
+            } else {
+                alert('Please enter at least one player.');
+            }
+        });
+    </script>
+</body>
+</html>
